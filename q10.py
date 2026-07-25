@@ -7,6 +7,7 @@ import time
 from fastapi import APIRouter, HTTPException, Request, Response, Header
 from pydantic import BaseModel
 from typing import List, Dict, Any, Optional
+from fastapi.responses import JSONResponse
 
 router = APIRouter()
 
@@ -14,25 +15,28 @@ TASKS_DB: Dict[str, Dict[str, Any]] = {}
 
 @router.get("/.well-known/agent-card.json")
 async def get_agent_card():
-    return {
-        "name": "ga5-invoice-agent",
-        "description": "Autonomous Accounts Payable Invoice Action Agent v2",
-        "version": "1.0.0",
-        "protocolVersion": "1.0",
-        "capabilities": {
-            "streaming": False,
-            "pushNotifications": False,
-            "supportedMediaTypes": [
-                "application/vnd.ga5.invoice-claim-batch+json",
-                "application/vnd.ga5.invoice-action-proposals+json",
-                "application/vnd.ga5.invoice-action-receipts+json"
-            ]
+    return JSONResponse(
+        content={
+            "name": "ga5-invoice-agent",
+            "description": "Autonomous Accounts Payable Invoice Action Agent v2",
+            "version": "1.0.0",
+            "protocolVersion": "1.0",
+            "capabilities": {
+                "streaming": False,
+                "pushNotifications": False,
+                "supportedMediaTypes": [
+                    "application/vnd.ga5.invoice-claim-batch+json",
+                    "application/vnd.ga5.invoice-action-proposals+json",
+                    "application/vnd.ga5.invoice-action-receipts+json"
+                ]
+            },
+            "endpoints": {
+                "sendMessage": "/message:send",
+                "getTasks": "/tasks"
+            }
         },
-        "endpoints": {
-            "sendMessage": "/message:send",
-            "getTasks": "/tasks"
-        }
-    }
+        media_type="application/a2a+json"
+    )
 
 def parse_package_facts_and_action(pkg: dict) -> tuple:
     pkg_id = pkg.get("packageId", "")
@@ -180,10 +184,13 @@ async def send_message(request: Request, authorization: Optional[str] = Header(N
     
     TASKS_DB[task_id] = task_obj
 
-    return {
+    return JSONResponse(
+    content={
         "task": task_obj,
         "artifacts": [proposal_artifact, receipt_artifact]
-    }
+    },
+    media_type="application/a2a+json"
+)
 
 @router.get("/a2a/tasks")
 @router.get("/tasks")
@@ -198,18 +205,27 @@ async def list_tasks(request: Request, authorization: Optional[str] = Header(Non
         principal = hashlib.sha256(token.encode()).hexdigest()[:16]
 
     user_tasks = [t for t in TASKS_DB.values() if t.get("principal") == principal]
-    return {"tasks": user_tasks}
+    return JSONResponse(
+    content={"tasks": user_tasks},
+    media_type="application/a2a+json"
+)
 
 @router.get("/a2a/tasks/{task_id}")
 @router.get("/tasks/{task_id}")
 async def get_task(task_id: str, request: Request, authorization: Optional[str] = Header(None)):
     if task_id not in TASKS_DB:
         raise HTTPException(status_code=404, detail="Task not found")
-    return {"task": TASKS_DB[task_id]}
+    return JSONResponse(
+    content={"task": TASKS_DB[task_id]},
+    media_type="application/a2a+json"
+)
 
 @router.post("/a2a/tasks/{task_id}:continue")
 @router.post("/tasks/{task_id}:continue")
 async def continue_task(task_id: str, request: Request):
     if task_id not in TASKS_DB:
         raise HTTPException(status_code=404, detail="Task not found")
-    return {"task": TASKS_DB[task_id]}
+    return JSONResponse(
+    content={"task": TASKS_DB[task_id]},
+    media_type="application/a2a+json"
+)
